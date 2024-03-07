@@ -1,0 +1,64 @@
+【主程序】
+stock_start_time = {}  # key为股票代码，初始值为0
+stock_qty_acc0 = {}  # key为股票代码，初始值从csv中读到，是acc0 （也就是本机）委托的数量
+stock_qty = {}  # key为股票代码，在stock_qty_acc0的基础上，加上其他账户的相同股票的委托数
+stock_price = {}  # key为股票代码，初始值根据csv中读到
+
+# 每次while循环时重置pending_list，如果读取到csv文件且委托金额/委托数量大于阈值，就会放到pending_list中；
+# 为了减少不必要的行情订阅，先sleep 2秒、然后根据pending_list中股票的未成交量和未成交金额判断是否真的需要订阅行情；
+# 如需要订阅行情，则订阅、并把股票加到subscription_list中
+pending_list = []
+subscription_list = []  # 在订阅快照行情的股票列表
+
+【TraderManager】
+traded_qty = {}
+onTradeEvent - 如果有买成交，就更新累加 （加之前要加锁，加完以后解除锁）
+onOrderEvent - 如果有状态为4（已报）的其他账户的委托，就更新累加
+
+【主程序】
+While True:
+    pending_list = []  # 重置pending_list
+    看是否有tiktok下单的csv文件，如有且不在stock_qty中:
+        stock_qty_acc0 (本账户委托) 和stock_price根据csv文件赋值
+        stock_qty 先通过trade_manager的委托回报获取（每次0.5秒、等3次）；如果获取不到，则通过配置文件中的系数估算
+        如果总委托量<100万股且总委托金额<1000万元:
+            continue  (CASE 0)
+        else:
+            stock_start_time[stock]赋初值为0
+            pending_list.append(stock)
+
+    sleep(2)
+    看pending_list内容是否为空，如不为空：
+        for stock in pending_list:
+            如果该stock未成交量*<100万股且未成交金额*<1000万元：
+                continue (CASE 1)
+            else:
+                订阅stock的快照行情
+                subscription_list.append(stock)
+
+    看subscription_list是否为内容，如为空：
+        continue
+    如不为空:
+        根据某只股票的快照行情驱动:
+            如果未成交量*<100万股且未成交金额*<1000万元：
+                取消快照订阅 (CASE 2)
+                subscription_list中移除这只stock
+                continue
+
+            如果本机未成交量 <= 200：
+                取消快照订阅 (CASE 3)
+                subscription_list中移除这只stock
+                continue
+
+            如stock_start_time[stock] == 0  or  当前未成交量* / 买1 < 0.28:
+                stock_start_time[stock] = 快照时间
+                continue
+
+            如当前tick时间 - start_time > 9分钟:
+                while 未成交量*>100万股 or 未成交金额* > 1000万元:
+                    根据下单csv文件，倒序撤单；stock_qty[stock] -= 委托量
+                取消快照订阅 (CASE 4)
+                subscription_list中移除这只stock
+
+
+* 从TraderManager中获取已成交量（并算出已成交金额），求出未成交量和未成交金额；
