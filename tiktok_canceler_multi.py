@@ -120,7 +120,10 @@ if __name__ == "__main__":
                 else:
                     stock_start_time[stock] = 0
                     pending_list.append(stock)
-        sleep(2)
+
+        if quote_manager.quote_queue.empty():
+            sleep(2)
+
         if len(pending_list) > 0:
             for stock in pending_list:
                 traded_qty = trade_manager.get_traded_qty(stock)
